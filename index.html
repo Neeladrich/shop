@@ -650,19 +650,36 @@ const FIREBASE_CONFIG = {
   appId:             "YOUR_APP_ID"
 };
 
-// Razorpay key (use rzp_test_... for testing, rzp_live_... for production)
+// Razorpay key — use rzp_test_... for testing, rzp_live_... for production
 const RAZORPAY_KEY = "rzp_test_YOUR_KEY_HERE";
 
-// Admin email & password — create this user in Firebase Console → Authentication
+// Admin credentials — create this user in Firebase Console → Authentication
 const ADMIN_EMAIL    = "admin@swiftlocal.com";
-const ADMIN_PASSWORD = "Admin@1234";   // ← Change this before going live!
+const ADMIN_PASSWORD = "Admin@1234";
 
 // ═══════════════════════════════════════════════════════════════════
+//  ✅ FIX: SMART FIREBASE DETECTION — NO MORE INFINITE LOADING
+// ═══════════════════════════════════════════════════════════════════
 
-// ── FIREBASE INIT ──
-firebase.initializeApp(FIREBASE_CONFIG);
-const db   = firebase.firestore();
-const auth = firebase.auth();
+// Checks whether real Firebase keys have been pasted in
+function isFirebaseConfigured(){
+  return FIREBASE_CONFIG.apiKey !== 'YOUR_API_KEY'
+      && FIREBASE_CONFIG.projectId !== 'YOUR_PROJECT_ID'
+      && FIREBASE_CONFIG.apiKey.length > 10;
+}
+
+// Checks whether a real Razorpay key has been pasted in
+function isRazorpayConfigured(){
+  return RAZORPAY_KEY !== 'rzp_test_YOUR_KEY_HERE'
+      && (RAZORPAY_KEY.startsWith('rzp_test_') || RAZORPAY_KEY.startsWith('rzp_live_'))
+      && RAZORPAY_KEY.length > 20;
+}
+
+// Global mode flag — set during initApp
+let USE_FIREBASE = false;
+
+// Firebase objects — only assigned when Firebase is configured
+let db = null, auth = null;
 
 // ── APP STATE ──
 let role = null, cart = {}, editProdId = null, activeCat = 'All';
@@ -671,7 +688,7 @@ let currentAgentName = null;
 let products = [], orders = [], agents = [];
 let ZONES = {};
 
-// ── DEFAULT SEED DATA (used only on first-ever Firebase run) ──
+// ── DEFAULT SEED DATA ──
 const DEFAULT_PRODUCTS = [
   {id:'p1',name:'Fresh Onions',cat:'Fruits & Vegetables',icon:'🧅',img:'https://images.unsplash.com/photo-1618512496248-a07fe83aa8cb?w=300&q=80',unit:'1 kg',price:29,mrp:40,stock:200,time:'18 mins',desc:'Farm fresh',demand:8,pins:'500081,500032,500018'},
   {id:'p2',name:'Ripe Tomatoes',cat:'Fruits & Vegetables',icon:'🍅',img:'https://images.unsplash.com/photo-1546094096-0df4bcaaa337?w=300&q=80',unit:'500 g',price:19,mrp:30,stock:150,time:'18 mins',desc:'Ripe & juicy',demand:7,pins:'500081,500032'},
@@ -686,13 +703,11 @@ const DEFAULT_PRODUCTS = [
   {id:'p11',name:'Fresh Curd 400g',cat:'Dairy & Eggs',icon:'🍶',img:'https://images.unsplash.com/photo-1488477181946-6428a0291777?w=300&q=80',unit:'400 g',price:38,mrp:42,stock:75,time:'20 mins',desc:'Fresh curd',demand:6,pins:'500081,500072,500085'},
   {id:'p12',name:'Bananas (6 pcs)',cat:'Fruits & Vegetables',icon:'🍌',img:'https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?w=300&q=80',unit:'6 pcs',price:35,mrp:45,stock:180,time:'18 mins',desc:'Yellow ripe',demand:7,pins:'500081,500049,500016'},
 ];
-
 const DEFAULT_AGENTS = [
   {id:'a1',name:'Ravi Kumar',phone:'9111111111',area:'Madhapur, Kondapur',status:'active',orders:12,rating:4.8},
   {id:'a2',name:'Suresh Yadav',phone:'9222222222',area:'Gachibowli, HITEC City',status:'active',orders:9,rating:4.6},
   {id:'a3',name:'Mahesh G',phone:'9333333333',area:'Kukatpally, Miyapur',status:'offline',orders:0,rating:4.5},
 ];
-
 const DEFAULT_ZONES = {
   '500081':{name:'Madhapur',city:'Hyderabad'},
   '500032':{name:'Gachibowli',city:'Hyderabad'},
@@ -703,16 +718,46 @@ const DEFAULT_ZONES = {
   '500016':{name:'Ameerpet',city:'Hyderabad'},
   '500033':{name:'Jubilee Hills',city:'Hyderabad'},
 };
+const DEFAULT_ORDERS = [
+  {id:'SL-001',cust:'Priya Reddy',phone:'9876543210',addr:'Flat 204, Green Palms, Madhapur',area:'Madhapur',pin:'500081',items:[{name:'Fresh Onions',qty:2,price:29,icon:'🧅'},{name:'Ripe Tomatoes',qty:1,price:19,icon:'🍅'}],sub:77,del:0,tot:80,status:'delivered',slot:'Now',agent:'Ravi Kumar',time:'10 min ago',paymentId:null},
+  {id:'SL-002',cust:'Kiran Babu',phone:'9123456789',addr:'H.No 45, Road 3, Gachibowli',area:'Gachibowli',pin:'500032',items:[{name:'Eggs (6 pack)',qty:1,price:68,icon:'🥚'},{name:'Amul Butter',qty:1,price:55,icon:'🧈'}],sub:123,del:19,tot:145,status:'picked',slot:'10am-12pm',agent:'Suresh Yadav',time:'25 min ago',paymentId:null},
+  {id:'SL-003',cust:'Anitha Sharma',phone:'9988776655',addr:'302 Vasantha Towers, Kondapur',area:'Kondapur',pin:'500018',items:[{name:'Aashirvaad Atta',qty:1,price:285,icon:'🌾'}],sub:285,del:0,tot:288,status:'confirmed',slot:'12pm-2pm',agent:'Ravi Kumar',time:'5 min ago',paymentId:null},
+  {id:'SL-004',cust:'Venkat Rao',phone:'9000000001',addr:'8-2-120, Jubilee Hills',area:'Jubilee Hills',pin:'500033',items:[{name:'Kurkure Masala',qty:3,price:20,icon:'🥨'},{name:"Lay's Classic",qty:2,price:20,icon:'🥔'}],sub:100,del:19,tot:122,status:'pending',slot:'Now',agent:null,time:'Just now',paymentId:null},
+];
+
+// ══════════════════════════════════════════════
+//  LOCALSTORAGE LAYER (used when Firebase is not configured)
+// ══════════════════════════════════════════════
+const LS = {
+  save(key, data){ try{ localStorage.setItem('sl_'+key, JSON.stringify(data)); }catch(e){} },
+  load(key, def) { try{ const d=localStorage.getItem('sl_'+key); return d?JSON.parse(d):def; }catch(e){ return def; } }
+};
+
+function loadFromLocalStorage(){
+  products = LS.load('products', DEFAULT_PRODUCTS);
+  agents   = LS.load('agents',   DEFAULT_AGENTS);
+  orders   = LS.load('orders',   DEFAULT_ORDERS);
+  ZONES    = LS.load('zones',    DEFAULT_ZONES);
+}
+
+function saveAllToLocalStorage(){
+  LS.save('products', products);
+  LS.save('agents',   agents);
+  LS.save('orders',   orders);
+  LS.save('zones',    ZONES);
+}
 
 // ── LOADER ──
 function showLoader(msg){
-  document.getElementById('app-loader').classList.remove('hide');
+  const el = document.getElementById('app-loader');
+  el.style.display = 'flex';
+  el.classList.remove('hide');
   document.getElementById('loader-msg').textContent = msg || 'Loading...';
 }
 function hideLoader(){
   const el = document.getElementById('app-loader');
   el.classList.add('hide');
-  setTimeout(()=>el.style.display='none', 400);
+  setTimeout(()=>{ el.style.display='none'; }, 420);
 }
 
 // ── TOAST ──
@@ -726,98 +771,121 @@ function showToast(msg){
 }
 
 // ══════════════════════════════════════════════
-//  FIREBASE: LOAD ALL DATA
+//  ✅ FIXED initApp — NEVER HANGS AGAIN
 // ══════════════════════════════════════════════
 async function initApp(){
-  showLoader('Connecting to database...');
+  showLoader('Starting SwiftLocal...');
+
+  // ── CASE 1: Firebase keys are still placeholders → use localStorage instantly ──
+  if(!isFirebaseConfigured()){
+    loadFromLocalStorage();
+    hideLoader();
+    document.getElementById('role-screen').style.display = 'flex';
+    showSetupBanner();   // gentle reminder in admin panel
+    return;
+  }
+
+  // ── CASE 2: Real Firebase keys → connect with a 7-second timeout ──
+  USE_FIREBASE = true;
   try {
-    // Check if data exists — if not, seed defaults
-    const pSnap = await db.collection('products').limit(1).get();
-    if(pSnap.empty){
-      showLoader('Setting up for first time...');
-      await seedDefaults();
-    }
+    firebase.initializeApp(FIREBASE_CONFIG);
+    db   = firebase.firestore();
+    auth = firebase.auth();
 
-    // Load products
-    const prodSnap = await db.collection('products').get();
-    products = prodSnap.docs.map(d => ({...d.data(), id: d.id}));
+    // Race Firebase against a 7-second timeout so the app never hangs
+    const connectWithTimeout = new Promise(async (resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Firebase connection timed out')), 7000);
+      try {
+        await connectFirebase();
+        clearTimeout(timer);
+        resolve();
+      } catch(e){
+        clearTimeout(timer);
+        reject(e);
+      }
+    });
 
-    // Load agents
-    const agentSnap = await db.collection('agents').get();
-    agents = agentSnap.docs.map(d => ({...d.data(), id: d.id}));
-
-    // Load zones
-    const zoneSnap = await db.collection('zones').get();
-    ZONES = {};
-    zoneSnap.docs.forEach(d => { ZONES[d.id] = d.data(); });
-
-    // Load orders (most recent 100)
-    const orderSnap = await db.collection('orders')
-      .orderBy('createdAt','desc').limit(100).get();
-    orders = orderSnap.docs.map(d => ({...d.data(), id: d.id}));
-
+    await connectWithTimeout;
     hideLoader();
     document.getElementById('role-screen').style.display = 'flex';
 
   } catch(e){
+    // ── CASE 3: Firebase configured but failed → fall back to localStorage ──
+    console.warn('Firebase failed, falling back to localStorage:', e.message);
+    USE_FIREBASE = false;
+    loadFromLocalStorage();
     hideLoader();
-    document.getElementById('app-loader').style.display = 'flex';
-    document.getElementById('loader-msg').textContent =
-      '⚠️ Firebase connection failed. Check your API keys in the FIREBASE_CONFIG section.';
-    document.querySelector('.loader-spin').style.display = 'none';
-    console.error('Firebase init error:', e);
+    document.getElementById('role-screen').style.display = 'flex';
+    showToast('⚠️ Cloud sync unavailable. Running in offline mode.');
   }
+}
+
+async function connectFirebase(){
+  // Seed defaults on first run
+  const pSnap = await db.collection('products').limit(1).get();
+  if(pSnap.empty){
+    showLoader('First-time setup...');
+    await seedDefaults();
+  }
+  // Load all collections in parallel
+  const [prodSnap, agentSnap, zoneSnap, orderSnap] = await Promise.all([
+    db.collection('products').get(),
+    db.collection('agents').get(),
+    db.collection('zones').get(),
+    db.collection('orders').orderBy('createdAt','desc').limit(100).get(),
+  ]);
+  products = prodSnap.docs.map(d=>({...d.data(), id:d.id}));
+  agents   = agentSnap.docs.map(d=>({...d.data(), id:d.id}));
+  ZONES    = {};
+  zoneSnap.docs.forEach(d=>{ ZONES[d.id]=d.data(); });
+  orders   = orderSnap.docs.map(d=>({...d.data(), id:d.id}));
 }
 
 async function seedDefaults(){
   const batch = db.batch();
-  DEFAULT_PRODUCTS.forEach(p => {
-    batch.set(db.collection('products').doc(p.id), p);
-  });
-  DEFAULT_AGENTS.forEach(a => {
-    batch.set(db.collection('agents').doc(a.id), a);
-  });
-  Object.entries(DEFAULT_ZONES).forEach(([pin, z]) => {
-    batch.set(db.collection('zones').doc(pin), z);
-  });
+  DEFAULT_PRODUCTS.forEach(p=>{ batch.set(db.collection('products').doc(p.id), p); });
+  DEFAULT_AGENTS.forEach(a=>{ batch.set(db.collection('agents').doc(a.id), a); });
+  Object.entries(DEFAULT_ZONES).forEach(([pin,z])=>{ batch.set(db.collection('zones').doc(pin), z); });
   await batch.commit();
   products = [...DEFAULT_PRODUCTS];
   agents   = [...DEFAULT_AGENTS];
   ZONES    = {...DEFAULT_ZONES};
 }
 
-// ── REFRESH DATA FROM FIRESTORE ──
+// ── SETUP BANNER shown in Admin when Firebase is not yet configured ──
+function showSetupBanner(){
+  // Injected into admin dashboard — see renderDashboard()
+  window._showSetupBanner = true;
+}
+
+// ── REFRESH FROM FIRESTORE ──
 async function refreshOrders(){
+  if(!USE_FIREBASE) return;
   const snap = await db.collection('orders').orderBy('createdAt','desc').limit(100).get();
-  orders = snap.docs.map(d => ({...d.data(), id: d.id}));
+  orders = snap.docs.map(d=>({...d.data(), id:d.id}));
 }
 async function refreshProducts(){
+  if(!USE_FIREBASE) return;
   const snap = await db.collection('products').get();
-  products = snap.docs.map(d => ({...d.data(), id: d.id}));
-}
-async function refreshAgents(){
-  const snap = await db.collection('agents').get();
-  agents = snap.docs.map(d => ({...d.data(), id: d.id}));
+  products = snap.docs.map(d=>({...d.data(), id:d.id}));
 }
 
 // ══════════════════════════════════════════════
-//  AUTH: ADMIN LOGIN
+//  AUTH: ADMIN & DELIVERY LOGIN
 // ══════════════════════════════════════════════
 function enterRole(r){
-  if(r === 'admin'){
+  if(r==='admin'){
     document.getElementById('admin-login-modal').classList.add('open');
     document.getElementById('admin-email').value = ADMIN_EMAIL;
     return;
   }
-  if(r === 'delivery'){
-    // Populate agent dropdown
+  if(r==='delivery'){
     const sel = document.getElementById('delivery-agent-select');
-    sel.innerHTML = '<option value="">Select your name...</option>' +
-      agents.map(a => `<option value="${a.name}">${a.name} (${a.area})</option>`).join('');
+    sel.innerHTML = '<option value="">Select your name...</option>'+
+      agents.map(a=>`<option value="${a.name}">${a.name} (${a.area})</option>`).join('');
     document.getElementById('delivery-login-modal').classList.add('open');
     return;
   }
-  // Customer — no auth needed
   activateRole('customer');
 }
 
@@ -831,15 +899,30 @@ async function doAdminLogin(){
   btn.textContent = 'Logging in...';
   btn.disabled = true;
 
+  // If Firebase Auth is not available, use hardcoded credential check
+  if(!USE_FIREBASE || !auth){
+    if(email === ADMIN_EMAIL && pass === ADMIN_PASSWORD){
+      document.getElementById('admin-login-modal').classList.remove('open');
+      document.getElementById('admin-pass').value = '';
+      activateRole('admin');
+    } else {
+      errEl.textContent = 'Invalid email or password.';
+      errEl.classList.add('show');
+    }
+    btn.textContent = 'Login →';
+    btn.disabled = false;
+    return;
+  }
+
   try {
     await auth.signInWithEmailAndPassword(email, pass);
     document.getElementById('admin-login-modal').classList.remove('open');
     document.getElementById('admin-pass').value = '';
     activateRole('admin');
   } catch(e){
-    errEl.textContent = e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found'
-      ? 'Invalid email or password. Please check and try again.'
-      : 'Login failed: ' + e.message;
+    errEl.textContent = (e.code==='auth/wrong-password'||e.code==='auth/user-not-found')
+      ? 'Invalid email or password. Please try again.'
+      : 'Login failed: '+e.message;
     errEl.classList.add('show');
   }
   btn.textContent = 'Login →';
@@ -847,15 +930,9 @@ async function doAdminLogin(){
 }
 
 function doDeliveryLogin(){
-  const sel   = document.getElementById('delivery-agent-select');
-  const name  = sel.value;
+  const name  = document.getElementById('delivery-agent-select').value;
   const errEl = document.getElementById('delivery-err');
-
-  if(!name){
-    errEl.textContent = 'Please select your name from the list.';
-    errEl.classList.add('show');
-    return;
-  }
+  if(!name){ errEl.textContent='Please select your name.'; errEl.classList.add('show'); return; }
   errEl.classList.remove('show');
   currentAgentName = name;
   document.getElementById('delivery-login-modal').classList.remove('open');
@@ -867,9 +944,10 @@ function cancelLogin(type){
 }
 
 async function signOutAndSwitch(){
-  if(role === 'admin') await auth.signOut();
-  role = null;
-  currentAgentName = null;
+  if(USE_FIREBASE && auth && role==='admin'){
+    try{ await auth.signOut(); }catch(e){}
+  }
+  role = null; currentAgentName = null;
   document.getElementById('role-screen').style.display = 'flex';
   document.getElementById('topbar').style.display = 'none';
   document.getElementById('all-screens').style.display = 'none';
@@ -882,11 +960,11 @@ function activateRole(r){
   document.getElementById('all-screens').style.display = '';
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById('role-badge').textContent =
-    r==='admin' ? 'Admin 🔑' : r==='delivery' ? `${currentAgentName} 🛵` : 'Customer 🛍️';
+    r==='admin'?'Admin 🔑':r==='delivery'?`${currentAgentName} 🛵`:'Customer 🛍️';
   document.getElementById('cart-topbtn').style.display = r==='customer'?'':'none';
   if(r==='customer'){ setZone(); renderCats(); renderProds(); showScreen('cust-home'); }
-  else if(r==='admin'){ showScreen('admin'); adminTab('dashboard', document.querySelector('.sidebar-item')); }
-  else { document.getElementById('del-agent-name').textContent = currentAgentName; renderDelivery(); showScreen('delivery'); }
+  else if(r==='admin'){ showScreen('admin'); adminTab('dashboard',document.querySelector('.sidebar-item')); }
+  else { document.getElementById('del-agent-name').textContent=currentAgentName; renderDelivery(); showScreen('delivery'); }
 }
 
 function showScreen(id){
@@ -899,7 +977,7 @@ function showScreen(id){
 //  CUSTOMER: PRODUCTS & CART
 // ══════════════════════════════════════════════
 const CATS=['All','Fruits & Vegetables','Dairy & Eggs','Snacks','Beverages','Staples','Cleaning','Personal Care','Frozen'];
-const fmt = n => '₹'+Number(n).toLocaleString('en-IN');
+const fmt = n=>'₹'+Number(n).toLocaleString('en-IN');
 
 function setZone(){
   const pin = document.getElementById('pincode-input').value.trim();
@@ -907,23 +985,23 @@ function setZone(){
   const z = ZONES[pin];
   document.getElementById('zone-info').style.display = 'flex';
   if(z){
-    document.getElementById('zone-name').textContent = z.name + ', ' + z.city;
-    showToast('📍 Location set to ' + z.name);
+    document.getElementById('zone-name').textContent = z.name+', '+z.city;
+    showToast('📍 Location set to '+z.name);
   } else {
-    document.getElementById('zone-name').textContent = 'Unknown Area (' + pin + ')';
-    showToast('⚠️ Pincode not in our delivery zone yet');
+    document.getElementById('zone-name').textContent = 'Unknown Area ('+pin+')';
+    showToast('⚠️ Pincode not in delivery zone');
   }
 }
 
 function renderCats(){
   const icons={'All':'🛒','Fruits & Vegetables':'🥦','Dairy & Eggs':'🥛','Snacks':'🍿','Beverages':'🧃','Staples':'🌾','Cleaning':'🧹','Personal Care':'🧴','Frozen':'🧊'};
-  document.getElementById('cats-row').innerHTML = CATS.map(c =>
+  document.getElementById('cats-row').innerHTML = CATS.map(c=>
     `<button class="cat-chip ${c===activeCat?'active':''}" onclick="filterCat('${c}')">${icons[c]||''} ${c}</button>`
   ).join('');
 }
 
 function filterCat(c){
-  activeCat = c;
+  activeCat=c;
   document.getElementById('cat-title').textContent = c==='All'?'All Products':c;
   renderCats(); renderProds();
 }
@@ -933,18 +1011,12 @@ function searchProds(q){ renderProds(q); }
 function renderProds(q=''){
   const el = document.getElementById('cust-products');
   let list = products.filter(p=>{
-    const inCat = activeCat==='All' || p.cat===activeCat;
-    const inQ   = !q || p.name.toLowerCase().includes(q.toLowerCase());
-    return inCat && inQ;
+    return (activeCat==='All'||p.cat===activeCat) && (!q||p.name.toLowerCase().includes(q.toLowerCase()));
   });
-  if(!list.length){
-    el.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><div class="icon">📦</div><p>No products found</p></div>`;
-    return;
-  }
-  el.innerHTML = list.map(p => {
-    const disc   = p.mrp>p.price ? Math.round((1-p.price/p.mrp)*100) : 0;
-    const inCart = cart[p.id];
-    const oos    = p.stock<=0;
+  if(!list.length){ el.innerHTML=`<div class="empty-state" style="grid-column:1/-1"><div class="icon">📦</div><p>No products found</p></div>`; return; }
+  el.innerHTML = list.map(p=>{
+    const disc=p.mrp>p.price?Math.round((1-p.price/p.mrp)*100):0;
+    const inCart=cart[p.id]; const oos=p.stock<=0;
     return `<div class="prod-card${oos?' out-of-stock':''}">
       <div class="prod-thumb">
         ${p.img?`<img src="${p.img}" alt="${p.name}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`:``}
@@ -967,47 +1039,42 @@ function renderProds(q=''){
 }
 
 function addCart(id){
-  const p = products.find(x=>x.id===id);
+  const p=products.find(x=>x.id===id);
   if(!p||p.stock<=0) return;
-  cart[id] = {...p, qty:1};
-  updCartCount();
+  cart[id]={...p,qty:1}; updCartCount();
   renderProds(document.getElementById('cust-search').value);
   showToast(`${p.name} added to cart 🛒`);
 }
 function chgQty(id,d){
   if(!cart[id]) return;
-  cart[id].qty += d;
+  cart[id].qty+=d;
   if(cart[id].qty<=0) delete cart[id];
   updCartCount();
   renderProds(document.getElementById('cust-search').value);
   if(document.getElementById('cart-overlay').classList.contains('open')) renderCartPanel();
 }
 function updCartCount(){
-  document.getElementById('cart-count').textContent = Object.values(cart).reduce((s,i)=>s+i.qty,0);
+  document.getElementById('cart-count').textContent=Object.values(cart).reduce((s,i)=>s+i.qty,0);
 }
-
 function openCart(){ renderCartPanel(); document.getElementById('cart-overlay').classList.add('open'); }
 function closeCart(){ document.getElementById('cart-overlay').classList.remove('open'); }
 function closeCartOutside(e){ if(e.target.id==='cart-overlay') closeCart(); }
 
 function renderCartPanel(){
-  const items = Object.values(cart);
-  const el    = document.getElementById('cart-body');
+  const items=Object.values(cart);
+  const el=document.getElementById('cart-body');
   if(!items.length){
-    el.innerHTML = `<div class="empty-cart"><span class="icon">🛒</span><p>Your cart is empty</p><p style="font-size:12px;margin-top:4px">Add items to get started</p></div>`;
+    el.innerHTML=`<div class="empty-cart"><span class="icon">🛒</span><p>Your cart is empty</p><p style="font-size:12px;margin-top:4px">Add items to get started</p></div>`;
     return;
   }
-  const sub = items.reduce((s,i)=>s+i.price*i.qty,0);
-  const del = sub>=199?0:25;
-  el.innerHTML = items.map(i=>`<div class="cart-item">
+  const sub=items.reduce((s,i)=>s+i.price*i.qty,0);
+  const del=sub>=199?0:25;
+  el.innerHTML=items.map(i=>`<div class="cart-item">
     <div class="ci-thumb">
       ${i.img?`<img src="${i.img}" alt="${i.name}" onerror="this.parentElement.innerHTML='<div class=ci-thumb-fallback>${i.icon}</div>'">`:
       `<div class="ci-thumb-fallback">${i.icon}</div>`}
     </div>
-    <div class="ci-info">
-      <div class="ci-name">${i.name}</div>
-      <div class="ci-price">${fmt(i.price)} × ${i.qty}</div>
-    </div>
+    <div class="ci-info"><div class="ci-name">${i.name}</div><div class="ci-price">${fmt(i.price)} × ${i.qty}</div></div>
     <div class="qty-control" style="margin:0 8px">
       <button onclick="chgQty('${i.id}',-1)">−</button>
       <span>${i.qty}</span>
@@ -1017,7 +1084,7 @@ function renderCartPanel(){
       <div class="ci-total">${fmt(i.price*i.qty)}</div>
       <button onclick="openSwap('${i.id}')" style="font-size:10px;font-weight:700;color:var(--blue);background:var(--blue-light);border:none;border-radius:4px;padding:3px 8px;cursor:pointer">🔄 Change</button>
     </div>
-  </div>`).join('') +
+  </div>`).join('')+
   `<div style="margin-top:14px">
     <div class="cart-bill-row"><span>Subtotal</span><span>${fmt(sub)}</span></div>
     <div class="cart-bill-row"><span>Delivery</span><span>${del===0?'<span style="color:var(--green);font-weight:700">FREE</span>':fmt(del)}</span></div>
@@ -1027,141 +1094,113 @@ function renderCartPanel(){
 }
 
 function goCheckout(){
-  const items = Object.values(cart);
+  const items=Object.values(cart);
   if(!items.length){ showToast('Add items to cart first!'); return; }
   closeCart();
-  const sub = items.reduce((s,i)=>s+i.price*i.qty,0);
-  const del = sub>=199?0:25;
-  document.getElementById('checkout-items').innerHTML = items.map(i=>
+  const sub=items.reduce((s,i)=>s+i.price*i.qty,0);
+  const del=sub>=199?0:25;
+  document.getElementById('checkout-items').innerHTML=items.map(i=>
     `<div class="cart-bill-row"><span>${i.icon} ${i.name} ×${i.qty}</span><span>${fmt(i.price*i.qty)}</span></div>`
   ).join('');
-  document.getElementById('co-sub').textContent = fmt(sub);
-  document.getElementById('co-del').innerHTML   = del===0?'<span style="color:var(--green);font-weight:700">FREE</span>':fmt(del);
-  document.getElementById('co-tot').textContent = fmt(sub+del+3);
-  document.getElementById('co-pin').value = document.getElementById('pincode-input').value||'500081';
+  document.getElementById('co-sub').textContent=fmt(sub);
+  document.getElementById('co-del').innerHTML=del===0?'<span style="color:var(--green);font-weight:700">FREE</span>':fmt(del);
+  document.getElementById('co-tot').textContent=fmt(sub+del+3);
+  document.getElementById('co-pin').value=document.getElementById('pincode-input').value||'500081';
   showScreen('cust-checkout');
 }
 
 function selSlot(el){ document.querySelectorAll('.time-slot').forEach(s=>s.classList.remove('selected')); el.classList.add('selected'); }
 
 // ══════════════════════════════════════════════
-//  RAZORPAY PAYMENT
+//  ✅ SMART PAYMENT — Razorpay OR COD fallback
 // ══════════════════════════════════════════════
 function initPayment(){
-  // Validate form first
-  let valid = true;
-  const name  = document.getElementById('co-name').value.trim();
-  const phone = document.getElementById('co-phone').value.trim();
-  const addr  = document.getElementById('co-addr').value.trim();
+  let valid=true;
+  const name =document.getElementById('co-name').value.trim();
+  const phone=document.getElementById('co-phone').value.trim();
+  const addr =document.getElementById('co-addr').value.trim();
 
   ['err-name','err-phone','err-addr'].forEach(id=>document.getElementById(id).classList.remove('show'));
   ['co-name','co-phone','co-addr'].forEach(id=>document.getElementById(id).classList.remove('error'));
 
-  if(!name){
-    document.getElementById('err-name').classList.add('show');
-    document.getElementById('co-name').classList.add('error');
-    valid = false;
-  }
-  if(!phone || phone.replace(/\D/g,'').length<10){
-    document.getElementById('err-phone').classList.add('show');
-    document.getElementById('co-phone').classList.add('error');
-    valid = false;
-  }
-  if(!addr){
-    document.getElementById('err-addr').classList.add('show');
-    document.getElementById('co-addr').classList.add('error');
-    valid = false;
-  }
+  if(!name){ document.getElementById('err-name').classList.add('show'); document.getElementById('co-name').classList.add('error'); valid=false; }
+  if(!phone||phone.replace(/\D/g,'').length<10){ document.getElementById('err-phone').classList.add('show'); document.getElementById('co-phone').classList.add('error'); valid=false; }
+  if(!addr){ document.getElementById('err-addr').classList.add('show'); document.getElementById('co-addr').classList.add('error'); valid=false; }
   if(!valid){ showToast('Please fill all required fields'); return; }
 
-  const items = Object.values(cart);
+  const items=Object.values(cart);
   if(!items.length){ showToast('Your cart is empty!'); return; }
 
-  const sub   = items.reduce((s,i)=>s+i.price*i.qty,0);
-  const del   = sub>=199?0:25;
-  const total = sub + del + 3;
+  const sub=items.reduce((s,i)=>s+i.price*i.qty,0);
+  const total=sub+(sub>=199?0:25)+3;
 
-  const options = {
-    key:         RAZORPAY_KEY,
-    amount:      total * 100,       // Razorpay uses PAISE (₹1 = 100 paise)
-    currency:    'INR',
-    name:        'SwiftLocal',
+  // If Razorpay key is not configured → place order directly as COD
+  if(!isRazorpayConfigured()){
+    placeOrderNow(null);
+    return;
+  }
+
+  const options={
+    key: RAZORPAY_KEY,
+    amount: total*100,
+    currency: 'INR',
+    name: 'SwiftLocal',
     description: 'Hyperlocal Delivery Order',
-    prefill: {
-      name:    name,
-      contact: phone.replace(/\D/g,''),
-    },
+    prefill: { name, contact: phone.replace(/\D/g,'') },
     theme: { color: '#1A1A2E' },
-    handler: async function(response){
-      // Payment SUCCESS — save order to Firestore
-      await placeOrderToFirestore(response.razorpay_payment_id);
-    },
+    handler: async function(response){ await placeOrderNow(response.razorpay_payment_id); },
   };
-
-  const rzp = new Razorpay(options);
-  rzp.on('payment.failed', function(response){
-    showToast('Payment failed: ' + response.error.description);
-  });
+  const rzp=new Razorpay(options);
+  rzp.on('payment.failed', r=>showToast('Payment failed: '+r.error.description));
   rzp.open();
 }
 
-async function placeOrderToFirestore(paymentId){
-  const items  = Object.values(cart);
-  const sub    = items.reduce((s,i)=>s+i.price*i.qty,0);
-  const del    = sub>=199?0:25;
-  const name   = document.getElementById('co-name').value.trim();
-  const phone  = document.getElementById('co-phone').value.trim();
-  const addr   = document.getElementById('co-addr').value.trim();
-  const area   = document.getElementById('co-area').value;
-  const pin    = document.getElementById('co-pin').value || '500081';
-  const slot   = document.querySelector('.time-slot.selected')?.textContent || 'Now';
-  const oid    = 'SL-' + Date.now().toString().slice(-6);
+async function placeOrderNow(paymentId){
+  const items =Object.values(cart);
+  const sub   =items.reduce((s,i)=>s+i.price*i.qty,0);
+  const del   =sub>=199?0:25;
+  const name  =document.getElementById('co-name').value.trim();
+  const phone =document.getElementById('co-phone').value.trim();
+  const addr  =document.getElementById('co-addr').value.trim();
+  const area  =document.getElementById('co-area').value;
+  const pin   =document.getElementById('co-pin').value||'500081';
+  const slot  =document.querySelector('.time-slot.selected')?.textContent||'Now';
+  const oid   ='SL-'+Date.now().toString().slice(-6);
 
-  const order = {
-    id:        oid,
-    cust:      name,
-    phone:     phone,
-    addr:      addr,
-    area:      area,
-    pin:       pin,
-    items:     items.map(i=>({name:i.name, qty:i.qty, price:i.price, icon:i.icon})),
-    sub:       sub,
-    del:       del,
-    tot:       sub + del + 3,
-    status:    'pending',
-    slot:      slot,
-    agent:     null,
-    time:      'Just now',
-    paymentId: paymentId,
-    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+  const order={
+    id:oid, cust:name, phone, addr, area, pin,
+    items:items.map(i=>({name:i.name,qty:i.qty,price:i.price,icon:i.icon})),
+    sub, del, tot:sub+del+3,
+    status:'pending', slot, agent:null,
+    time:'Just now', paymentId: paymentId||null,
   };
 
   try {
-    await db.collection('orders').doc(oid).set(order);
-    // Add to local orders array
-    orders.unshift({...order, createdAt: new Date()});
-    cart = {};
-    updCartCount();
-    showToast('🎉 Payment successful! Order placed ✓');
+    if(USE_FIREBASE && db){
+      await db.collection('orders').doc(oid).set({
+        ...order, createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    } else {
+      orders.unshift(order);
+      LS.save('orders', orders);
+    }
+    cart={}; updCartCount();
+    showToast(paymentId?'🎉 Payment successful! Order placed ✓':'🎉 Order placed! Pay on delivery.');
     startTracking(oid);
   } catch(e){
-    showToast('Order save failed. Contact support with payment ID: ' + paymentId);
+    showToast('Order save failed. Please try again.');
     console.error(e);
   }
 }
 
-// ══════════════════════════════════════════════
-//  PRODUCT SWAP
-// ══════════════════════════════════════════════
+// ── PRODUCT SWAP ──
 function openSwap(cartId){
-  swapCartId = cartId;
-  const current = cart[cartId];
-  if(!current) return;
-  document.getElementById('swap-current-name').textContent = current.name;
-  const sameCat  = products.filter(p=>p.cat===current.cat&&p.id!==current.id&&p.stock>0);
-  const otherCat = products.filter(p=>p.cat!==current.cat&&p.id!==current.id&&p.stock>0).slice(0,4);
-  const list = [...sameCat,...otherCat].slice(0,8);
-  document.getElementById('swap-grid').innerHTML = list.map(p=>`<div class="swap-prod" onclick="doSwap('${p.id}')">
+  swapCartId=cartId;
+  const current=cart[cartId]; if(!current) return;
+  document.getElementById('swap-current-name').textContent=current.name;
+  const sameCat=products.filter(p=>p.cat===current.cat&&p.id!==current.id&&p.stock>0);
+  const other  =products.filter(p=>p.cat!==current.cat&&p.id!==current.id&&p.stock>0).slice(0,4);
+  document.getElementById('swap-grid').innerHTML=[...sameCat,...other].slice(0,8).map(p=>`<div class="swap-prod" onclick="doSwap('${p.id}')">
     ${p.img?`<img src="${p.img}" alt="${p.name}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`:``}
     <div class="sp-fallback" style="${p.img?'display:none':''}">${p.icon}</div>
     <div class="sp-name">${p.name}</div>
@@ -1175,28 +1214,19 @@ function closeSwap(){ document.getElementById('swap-modal').classList.remove('op
 function closeSwapOutside(e){ if(e.target.id==='swap-modal') closeSwap(); }
 function doSwap(newId){
   if(!swapCartId) return;
-  const old  = cart[swapCartId];
-  const newP = products.find(x=>x.id===newId);
+  const old=cart[swapCartId]; const newP=products.find(x=>x.id===newId);
   if(!old||!newP) return;
-  const qty = old.qty;
-  delete cart[swapCartId];
-  cart[newId] = {...newP, qty};
+  delete cart[swapCartId]; cart[newId]={...newP,qty:old.qty};
   closeSwap(); updCartCount();
   renderProds(document.getElementById('cust-search').value);
-  showToast(`Swapped to ${newP.name} ✓`);
-  openCart();
+  showToast(`Swapped to ${newP.name} ✓`); openCart();
 }
 
-// ══════════════════════════════════════════════
-//  LIVE MAP & TRACKING
-// ══════════════════════════════════════════════
-let mapRiderX=80,mapRiderY=160,mapProgress=0;
-
+// ── LIVE MAP & TRACKING ──
+let mapProgress=0;
 function initMap(){
-  const svg = document.getElementById('map-svg');
-  if(!svg) return;
-  svg.innerHTML=`
-    <rect width="580" height="220" fill="#e8f4e8"/>
+  const svg=document.getElementById('map-svg'); if(!svg) return;
+  svg.innerHTML=`<rect width="580" height="220" fill="#e8f4e8"/>
     <rect x="30" y="30" width="100" height="70" rx="6" fill="#d4e8c2" opacity=".7"/>
     <rect x="160" y="20" width="80" height="50" rx="6" fill="#d4e8c2" opacity=".6"/>
     <rect x="280" y="40" width="90" height="60" rx="6" fill="#d4e8c2" opacity=".7"/>
@@ -1208,75 +1238,55 @@ function initMap(){
     <line x1="0" y1="105" x2="580" y2="105" stroke="#cde3c0" stroke-width="18"/>
     <line x1="260" y1="0" x2="260" y2="220" stroke="#cde3c0" stroke-width="14"/>
     <line x1="0" y1="105" x2="580" y2="105" stroke="#fff" stroke-width="2" stroke-dasharray="20,14"/>
-    <path id="route-path" d="M80,160 C120,160 160,105 260,105 C360,105 420,70 500,60"
-      stroke="#1A1A2E" stroke-width="3" fill="none" stroke-dasharray="6,4" opacity=".5"/>
+    <path d="M80,160 C120,160 160,105 260,105 C360,105 420,70 500,60" stroke="#1A1A2E" stroke-width="3" fill="none" stroke-dasharray="6,4" opacity=".5"/>
     <circle cx="500" cy="60" r="14" fill="#E94560"/>
     <text x="500" y="65" text-anchor="middle" font-size="14">🏠</text>
     <circle cx="80" cy="160" r="12" fill="#1A1A2E"/>
     <text x="80" y="165" text-anchor="middle" font-size="12">🏪</text>
-    <g id="map-rider">
-      <circle r="16" fill="#00C896" stroke="#fff" stroke-width="2.5"/>
-      <text y="5" text-anchor="middle" font-size="14">🛵</text>
-    </g>`;
+    <g id="map-rider"><circle r="16" fill="#00C896" stroke="#fff" stroke-width="2.5"/><text y="5" text-anchor="middle" font-size="14">🛵</text></g>`;
   placeRider(0);
 }
-
 function placeRider(t){
-  const x = 80 + (500-80)*t;
-  const y = 160 + (60-160)*t - Math.sin(t*Math.PI)*40;
-  const rider = document.getElementById('map-rider');
-  if(rider) rider.setAttribute('transform',`translate(${x},${y})`);
+  const x=80+(500-80)*t, y=160+(60-160)*t-Math.sin(t*Math.PI)*40;
+  const r=document.getElementById('map-rider');
+  if(r) r.setAttribute('transform',`translate(${x},${y})`);
 }
-
 function animateMap(){
   if(mapTimer) clearInterval(mapTimer);
-  mapProgress = 0;
-  mapTimer = setInterval(()=>{
-    mapProgress += 0.015;
-    if(mapProgress>=1){ mapProgress=1; clearInterval(mapTimer); }
+  mapProgress=0;
+  mapTimer=setInterval(()=>{
+    mapProgress+=0.015; if(mapProgress>=1){mapProgress=1;clearInterval(mapTimer);}
     placeRider(mapProgress);
-    const minsLeft = Math.round((1-mapProgress)*20);
-    const chip = document.getElementById('map-eta-chip');
-    if(chip) chip.textContent = minsLeft>0?`~${minsLeft} min`:'Arriving!';
+    const chip=document.getElementById('map-eta-chip');
+    const m=Math.round((1-mapProgress)*20);
+    if(chip) chip.textContent=m>0?`~${m} min`:'Arriving!';
   },200);
 }
 
 const TRK_STEPS=[
-  {icon:'✅',label:'Order Confirmed',desc:'Your payment was received and order confirmed'},
+  {icon:'✅',label:'Order Confirmed',desc:'Your order has been placed successfully'},
   {icon:'📦',label:'Packing',desc:'Items being carefully packed at the store'},
   {icon:'🛵',label:'Out for Delivery',desc:'Your delivery partner is heading your way'},
   {icon:'🏠',label:'Delivered!',desc:'Enjoy your fresh order 😊'},
 ];
-
 function startTracking(oid){
-  trkStep = 0;
-  document.getElementById('track-oid').textContent = 'Order ' + oid;
+  trkStep=0;
+  document.getElementById('track-oid').textContent='Order '+oid;
   if(trkTimer) clearInterval(trkTimer);
   if(mapTimer) clearInterval(mapTimer);
-  renderTrack();
-  showScreen('cust-track');
-  initMap(); animateMap();
-  trkTimer = setInterval(()=>{
-    if(trkStep<3){ trkStep++; renderTrack(); }
-    else clearInterval(trkTimer);
-  },4000);
+  renderTrack(); showScreen('cust-track'); initMap(); animateMap();
+  trkTimer=setInterval(()=>{ if(trkStep<3){trkStep++;renderTrack();}else clearInterval(trkTimer); },4000);
 }
-
 function renderTrack(){
-  const pct    = [0,33,66,100][trkStep];
-  const etaMins= [20,15,8,0][trkStep];
-  const etaEl  = document.getElementById('track-eta');
-  if(etaEl) etaEl.innerHTML = trkStep===3
-    ?'<strong style="color:var(--green)">Delivered! 🎉</strong>'
-    :`Estimated: <strong>${etaMins} minutes</strong> ⚡`;
-
-  // Get the assigned agent for tracking display
-  const agentName = currentAgentName || (agents[0]&&agents[0].name) || 'Your Delivery Partner';
-  const agentRating = (agents[0]&&agents[0].rating) || '4.8';
-  const agentPhone  = (agents[0]&&agents[0].phone) || '';
-
-  document.getElementById('track-steps').innerHTML =
-    `<div class="track-line"></div><div class="track-progress-bar" style="height:${pct}%"></div>` +
+  const pct=[0,33,66,100][trkStep];
+  const eta=[20,15,8,0][trkStep];
+  const etaEl=document.getElementById('track-eta');
+  if(etaEl) etaEl.innerHTML=trkStep===3?'<strong style="color:var(--green)">Delivered! 🎉</strong>':`Estimated: <strong>${eta} minutes</strong> ⚡`;
+  const agentName=(agents[0]&&agents[0].name)||'Your Delivery Partner';
+  const agentRating=(agents[0]&&agents[0].rating)||'4.8';
+  const agentPhone=(agents[0]&&agents[0].phone)||'';
+  document.getElementById('track-steps').innerHTML=
+    `<div class="track-line"></div><div class="track-progress-bar" style="height:${pct}%"></div>`+
     TRK_STEPS.map((s,i)=>`<div class="track-step">
       <div class="step-dot ${i<trkStep?'done':i===trkStep?'active':''}">${i<trkStep?'✓':s.icon}</div>
       <div class="step-info">
@@ -1284,7 +1294,7 @@ function renderTrack(){
         <p>${s.desc}</p>
         ${i===trkStep?`<div class="step-time">In progress...</div>`:''}
       </div>
-    </div>`).join('') + `<div style="height:1rem"></div>` +
+    </div>`).join('')+`<div style="height:1rem"></div>`+
     (trkStep>=2?`<div class="db-card">
       <div class="db-avatar">🛵</div>
       <div class="db-info"><h4>${agentName}</h4><p>Your delivery partner · ⭐ ${agentRating}</p></div>
@@ -1295,31 +1305,46 @@ function renderTrack(){
 // ══════════════════════════════════════════════
 //  ADMIN PANEL
 // ══════════════════════════════════════════════
-function adminTab(tab, el){
+function adminTab(tab,el){
   document.querySelectorAll('.sidebar-item').forEach(s=>s.classList.remove('active'));
   if(el) el.classList.add('active');
-  const c = document.getElementById('admin-content');
-  ({
-    dashboard: ()=>renderDashboard(c),
-    products:  ()=>renderAdminProds(c),
-    orders:    ()=>renderAdminOrders(c),
-    pincodes:  ()=>renderPincodes(c),
-    agents:    ()=>renderAgents(c)
-  })[tab]();
+  const c=document.getElementById('admin-content');
+  ({dashboard:()=>renderDashboard(c),products:()=>renderAdminProds(c),orders:()=>renderAdminOrders(c),pincodes:()=>renderPincodes(c),agents:()=>renderAgents(c)})[tab]();
 }
 
 function renderDashboard(c){
-  const rev   = orders.reduce((s,o)=>s+o.tot,0);
-  const deliv = orders.filter(o=>o.status==='delivered').length;
-  const pend  = orders.filter(o=>o.status==='pending').length;
-  c.innerHTML = `
+  const rev=orders.reduce((s,o)=>s+o.tot,0);
+  const deliv=orders.filter(o=>o.status==='delivered').length;
+  const pend=orders.filter(o=>o.status==='pending').length;
+
+  // Setup banner for when Firebase keys are not yet configured
+  const banner = !USE_FIREBASE ? `
+    <div style="background:#FFF4E0;border:1.5px solid #F5A623;border-radius:12px;padding:14px 18px;margin-bottom:18px;display:flex;gap:12px;align-items:flex-start">
+      <span style="font-size:22px">⚙️</span>
+      <div>
+        <div style="font-size:14px;font-weight:800;color:#854F0B;margin-bottom:4px">Firebase not configured — running in Demo Mode</div>
+        <div style="font-size:12px;color:#854F0B;line-height:1.6">
+          Data is saved to this browser only. To go live with a real database:<br>
+          1. Paste your Firebase keys in the <code>FIREBASE_CONFIG</code> section of this file.<br>
+          2. Paste your Razorpay key in <code>RAZORPAY_KEY</code>.<br>
+          3. Redeploy the file.
+        </div>
+      </div>
+    </div>` : '';
+
+  c.innerHTML=`
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-    <h2 style="font-size:20px;font-weight:800;font-family:'DM Sans',sans-serif">Dashboard</h2>
+    <h2 style="font-size:20px;font-weight:800;font-family:'DM Sans',sans-serif">Dashboard
+      <span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;margin-left:8px;${USE_FIREBASE?'background:var(--green-light);color:var(--green)':'background:var(--orange-light);color:var(--orange)'}">
+        ${USE_FIREBASE?'🔥 Firebase Live':'📦 Demo Mode'}
+      </span>
+    </h2>
     <button class="action-btn btn-outline btn-sm" onclick="refreshAndRender()">🔄 Refresh</button>
   </div>
+  ${banner}
   <div class="stats-grid">
-    <div class="stat-card"><div class="stat-icon">💰</div><div class="stat-val">${fmt(rev)}</div><div class="stat-lbl">Total Revenue</div><div class="stat-change up">↑ From Razorpay</div></div>
-    <div class="stat-card"><div class="stat-icon">🧾</div><div class="stat-val">${orders.length}</div><div class="stat-lbl">Total Orders</div><div class="stat-change up">↑ Live from DB</div></div>
+    <div class="stat-card"><div class="stat-icon">💰</div><div class="stat-val">${fmt(rev)}</div><div class="stat-lbl">Total Revenue</div><div class="stat-change up">All orders</div></div>
+    <div class="stat-card"><div class="stat-icon">🧾</div><div class="stat-val">${orders.length}</div><div class="stat-lbl">Total Orders</div><div class="stat-change up">All time</div></div>
     <div class="stat-card"><div class="stat-icon">✅</div><div class="stat-val">${deliv}</div><div class="stat-lbl">Delivered</div><div class="stat-change up">${orders.length?Math.round(deliv/orders.length*100):0}% success</div></div>
     <div class="stat-card"><div class="stat-icon">⏳</div><div class="stat-val">${pend}</div><div class="stat-lbl">Pending</div><div class="stat-change ${pend>2?'down':'up'}">${pend>2?'High load':'Normal'}</div></div>
   </div>
@@ -1339,10 +1364,9 @@ function renderDashboard(c){
 
 async function refreshAndRender(){
   showToast('Refreshing...');
-  await refreshOrders();
-  await refreshProducts();
+  await refreshOrders(); await refreshProducts();
   renderDashboard(document.getElementById('admin-content'));
-  showToast('Data refreshed ✓');
+  showToast('Refreshed ✓');
 }
 
 function renderAdminProds(c){
@@ -1350,20 +1374,17 @@ function renderAdminProds(c){
     <div class="table-hd"><h3>Products (${products.length})</h3><button class="action-btn btn-primary" onclick="openModal()">+ Add Product</button></div>
     <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Product</th><th>Category</th><th>Price</th><th>Stock</th><th>Demand</th><th>Actions</th></tr></thead>
     <tbody>${products.map(p=>`<tr>
-      <td>
-        <div style="display:flex;align-items:center;gap:10px">
-          <div style="width:36px;height:36px;border-radius:6px;overflow:hidden;flex-shrink:0;background:var(--surface3)">
-            ${p.img?`<img src="${p.img}" style="width:100%;height:100%;object-fit:cover">`:
-            `<div style="font-size:20px;display:flex;align-items:center;justify-content:center;height:100%">${p.icon}</div>`}
-          </div>
-          <div><strong>${p.name}</strong><br><span style="color:var(--text3);font-size:11px">${p.unit}</span></div>
+      <td><div style="display:flex;align-items:center;gap:10px">
+        <div style="width:36px;height:36px;border-radius:6px;overflow:hidden;flex-shrink:0;background:var(--surface3)">
+          ${p.img?`<img src="${p.img}" style="width:100%;height:100%;object-fit:cover">`:
+          `<div style="font-size:20px;display:flex;align-items:center;justify-content:center;height:100%">${p.icon}</div>`}
         </div>
-      </td>
+        <div><strong>${p.name}</strong><br><span style="color:var(--text3);font-size:11px">${p.unit}</span></div>
+      </div></td>
       <td><span class="badge badge-purple">${p.cat}</span></td>
       <td style="font-weight:700">${fmt(p.price)}<br><span style="color:var(--text3);font-size:11px;text-decoration:line-through">${fmt(p.mrp)}</span></td>
       <td><span class="badge ${p.stock>50?'badge-green':p.stock>10?'badge-orange':'badge-red'}">${p.stock} units</span></td>
-      <td>
-        <div style="font-size:12px;font-weight:700;color:var(--p);margin-bottom:3px">${p.demand}/10</div>
+      <td><div style="font-size:12px;font-weight:700;color:var(--p);margin-bottom:3px">${p.demand}/10</div>
         <div class="demand-bar" style="width:80px"><div class="demand-fill" style="width:${p.demand*10}%;background:${p.demand>=7?'var(--red)':p.demand>=4?'var(--orange)':'var(--green)'}"></div></div>
       </td>
       <td style="white-space:nowrap">
@@ -1382,7 +1403,7 @@ function renderAdminOrders(c){
         <button class="action-btn btn-primary btn-sm" onclick="reloadOrders()">🔄 Refresh</button>
       </div>
     </div>
-    <div style="overflow-x:auto"><table class="tbl" id="admin-orders-tbl"><thead><tr><th>Order ID</th><th>Customer</th><th>Items</th><th>Total</th><th>Payment</th><th>Status</th><th>Agent</th><th>Update</th></tr></thead>
+    <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Order ID</th><th>Customer</th><th>Items</th><th>Total</th><th>Payment</th><th>Status</th><th>Agent</th><th>Update</th></tr></thead>
     <tbody id="orders-body">${ordersRows(orders)}</tbody></table></div>
   </div>`;
 }
@@ -1393,7 +1414,7 @@ function ordersRows(list){
     <td>${o.cust}<br><span style="font-size:11px;color:var(--text3)">${o.area}</span></td>
     <td style="font-size:12px;max-width:140px">${o.items.map(i=>`${i.name}×${i.qty}`).join(', ')}</td>
     <td style="font-weight:700">${fmt(o.tot)}</td>
-    <td><span class="badge ${o.paymentId?'badge-green':'badge-orange'}">${o.paymentId?'Paid':'Pending'}</span></td>
+    <td><span class="badge ${o.paymentId?'badge-green':'badge-orange'}">${o.paymentId?'Paid':'COD'}</span></td>
     <td><span class="badge status-${o.status}">${o.status}</span></td>
     <td style="font-size:12px">${o.agent||'<span style="color:var(--text3)">None</span>'}
       <br><select onchange="assignAgent('${o.id}',this.value)" style="margin-top:4px;padding:3px 6px;border:1px solid var(--border2);border-radius:4px;font-size:11px;font-family:inherit;background:var(--surface)">
@@ -1404,17 +1425,8 @@ function ordersRows(list){
   </tr>`).join('');
 }
 
-function filterOrders(s,btn){
-  const list = s==='All'?orders:orders.filter(o=>o.status===s);
-  document.getElementById('orders-body').innerHTML = ordersRows(list);
-}
-
-async function reloadOrders(){
-  showToast('Loading orders...');
-  await refreshOrders();
-  renderAdminOrders(document.getElementById('admin-content'));
-  showToast('Orders refreshed ✓');
-}
+function filterOrders(s){ const list=s==='All'?orders:orders.filter(o=>o.status===s); document.getElementById('orders-body').innerHTML=ordersRows(list); }
+async function reloadOrders(){ showToast('Loading...'); await refreshOrders(); renderAdminOrders(document.getElementById('admin-content')); showToast('Orders refreshed ✓'); }
 
 function statusSelect(oid,cur){
   return `<select onchange="updStatus('${oid}',this.value)" style="padding:5px 10px;border:1.5px solid var(--border2);border-radius:6px;font-size:12px;font-family:inherit;background:var(--surface)">
@@ -1422,46 +1434,27 @@ function statusSelect(oid,cur){
   </select>`;
 }
 
-async function updStatus(id, s){
-  const o = orders.find(x=>x.id===id);
-  if(o){
-    o.status = s;
-    try {
-      await db.collection('orders').doc(id).update({status: s});
-      showToast(`Order ${id} → ${s} ✓`);
-      renderDelivery();
-    } catch(e){
-      showToast('Update failed: ' + e.message);
-    }
-  }
+async function updStatus(id,s){
+  const o=orders.find(x=>x.id===id); if(!o) return;
+  o.status=s;
+  if(USE_FIREBASE&&db){ try{ await db.collection('orders').doc(id).update({status:s}); }catch(e){} }
+  else { LS.save('orders',orders); }
+  showToast(`Order ${id} → ${s} ✓`); renderDelivery();
 }
 
-async function assignAgent(id, agentName){
-  const o = orders.find(x=>x.id===id);
-  if(o){
-    o.agent = agentName;
-    try {
-      await db.collection('orders').doc(id).update({agent: agentName});
-      showToast(`Agent assigned ✓`);
-      renderDelivery();
-    } catch(e){
-      showToast('Assign failed: ' + e.message);
-    }
-  }
+async function assignAgent(id,agentName){
+  const o=orders.find(x=>x.id===id); if(!o) return;
+  o.agent=agentName;
+  if(USE_FIREBASE&&db){ try{ await db.collection('orders').doc(id).update({agent:agentName}); }catch(e){} }
+  else { LS.save('orders',orders); }
+  showToast('Agent assigned ✓'); renderDelivery();
 }
 
 function renderPincodes(c){
-  const rows = Object.entries(ZONES).map(([pin,z])=>{
-    const prods = products.filter(p=>p.pins&&p.pins.includes(pin)).length;
-    const ords  = orders.filter(o=>o.pin===pin).length;
-    return `<tr>
-      <td style="font-family:monospace;font-weight:700">${pin}</td>
-      <td><strong>${z.name}</strong></td>
-      <td>${z.city}</td>
-      <td><span class="badge badge-purple">${prods}</span></td>
-      <td><span class="badge badge-blue">${ords}</span></td>
-      <td><span class="badge badge-green">Active</span></td>
-    </tr>`;
+  const rows=Object.entries(ZONES).map(([pin,z])=>{
+    const prods=products.filter(p=>p.pins&&p.pins.includes(pin)).length;
+    const ords=orders.filter(o=>o.pin===pin).length;
+    return `<tr><td style="font-family:monospace;font-weight:700">${pin}</td><td><strong>${z.name}</strong></td><td>${z.city}</td><td><span class="badge badge-purple">${prods}</span></td><td><span class="badge badge-blue">${ords}</span></td><td><span class="badge badge-green">Active</span></td></tr>`;
   }).join('');
   c.innerHTML=`<div class="table-wrap">
     <div class="table-hd"><h3>Delivery Zones (${Object.keys(ZONES).length})</h3><button class="action-btn btn-primary" onclick="addZone()">+ Add Pincode</button></div>
@@ -1472,10 +1465,10 @@ function renderPincodes(c){
 function renderAgents(c){
   c.innerHTML=`<div class="table-wrap">
     <div class="table-hd"><h3>Delivery Boys (${agents.length})</h3><button class="action-btn btn-primary" onclick="addAgentPrompt()">+ Add Agent</button></div>
-    <table class="tbl"><thead><tr><th>Name</th><th>Phone</th><th>Coverage Area</th><th>Orders Today</th><th>Rating</th><th>Status</th></tr></thead>
+    <table class="tbl"><thead><tr><th>Name</th><th>Phone</th><th>Coverage Area</th><th>Orders</th><th>Rating</th><th>Status</th></tr></thead>
     <tbody>${agents.map(a=>`<tr>
       <td><strong>${a.name}</strong></td>
-      <td style="font-family:monospace"><a href="tel:${a.phone}" style="color:var(--blue)">${a.phone}</a></td>
+      <td><a href="tel:${a.phone}" style="color:var(--blue);font-family:monospace">${a.phone}</a></td>
       <td style="font-size:12px">${a.area}</td>
       <td style="font-weight:700">${a.orders}</td>
       <td>⭐ ${a.rating}</td>
@@ -1485,136 +1478,117 @@ function renderAgents(c){
 }
 
 async function addZone(){
-  const pin  = prompt('New Pincode (6 digits):');
-  const name = prompt('Area name:');
-  const city = prompt('City name:') || 'Hyderabad';
-  if(pin && name){
-    ZONES[pin] = {name, city};
-    try {
-      await db.collection('zones').doc(pin).set({name, city});
-      renderPincodes(document.getElementById('admin-content'));
-      showToast('Pincode added ✓');
-    } catch(e){ showToast('Save failed: '+e.message); }
-  }
+  const pin=prompt('New Pincode (6 digits):');
+  const name=prompt('Area name:');
+  const city=prompt('City name:')||'Hyderabad';
+  if(!pin||!name) return;
+  ZONES[pin]={name,city};
+  if(USE_FIREBASE&&db){ try{ await db.collection('zones').doc(pin).set({name,city}); }catch(e){} }
+  else { LS.save('zones',ZONES); }
+  renderPincodes(document.getElementById('admin-content'));
+  showToast('Pincode added ✓');
 }
 
 async function addAgentPrompt(){
-  const name  = prompt('Agent name:');
-  const phone = prompt('Phone number:');
-  const area  = prompt('Coverage area (e.g. Madhapur, Kondapur):');
-  if(name && phone && area){
-    const agentId = 'a' + Date.now();
-    const agent = {id:agentId, name, phone, area, status:'active', orders:0, rating:5.0};
-    agents.push(agent);
-    try {
-      await db.collection('agents').doc(agentId).set(agent);
-      renderAgents(document.getElementById('admin-content'));
-      showToast('Agent added ✓');
-    } catch(e){ showToast('Save failed: '+e.message); }
-  }
+  const name=prompt('Agent name:');
+  const phone=prompt('Phone number:');
+  const area=prompt('Coverage area:');
+  if(!name||!phone||!area) return;
+  const aid='a'+Date.now();
+  const agent={id:aid,name,phone,area,status:'active',orders:0,rating:5.0};
+  agents.push(agent);
+  if(USE_FIREBASE&&db){ try{ await db.collection('agents').doc(aid).set(agent); }catch(e){} }
+  else { LS.save('agents',agents); }
+  renderAgents(document.getElementById('admin-content'));
+  showToast('Agent added ✓');
 }
 
-// ══════════════════════════════════════════════
-//  ADMIN: PRODUCT MODAL
-// ══════════════════════════════════════════════
+// ── PRODUCT MODAL ──
 function updateDemandBar(){
-  const d   = parseInt(document.getElementById('pm-demand').value);
-  document.getElementById('pm-dval').textContent = d;
-  const bar = document.getElementById('pm-dbar');
-  bar.style.width      = (d*10)+'%';
-  bar.style.background = d>=7?'var(--red)':d>=4?'var(--orange)':'var(--green)';
+  const d=parseInt(document.getElementById('pm-demand').value);
+  document.getElementById('pm-dval').textContent=d;
+  const bar=document.getElementById('pm-dbar');
+  bar.style.width=(d*10)+'%';
+  bar.style.background=d>=7?'var(--red)':d>=4?'var(--orange)':'var(--green)';
 }
-
 function openModal(id=null){
-  editProdId = id;
-  document.getElementById('modal-title').textContent = id?'Edit Product':'Add New Product';
-  const fields = ['pm-name','pm-icon','pm-unit','pm-price','pm-mrp','pm-stock','pm-time','pm-desc','pm-pins'];
+  editProdId=id;
+  document.getElementById('modal-title').textContent=id?'Edit Product':'Add New Product';
+  const fields=['pm-name','pm-icon','pm-unit','pm-price','pm-mrp','pm-stock','pm-time','pm-desc','pm-pins'];
   if(id){
-    const p = products.find(x=>x.id===id);
+    const p=products.find(x=>x.id===id);
     if(p){
-      document.getElementById('pm-name').value   = p.name;
-      document.getElementById('pm-cat').value    = p.cat;
-      document.getElementById('pm-icon').value   = p.icon;
-      document.getElementById('pm-unit').value   = p.unit;
-      document.getElementById('pm-price').value  = p.price;
-      document.getElementById('pm-mrp').value    = p.mrp;
-      document.getElementById('pm-stock').value  = p.stock;
-      document.getElementById('pm-time').value   = p.time||'';
-      document.getElementById('pm-desc').value   = p.desc||'';
-      document.getElementById('pm-demand').value = p.demand||5;
-      document.getElementById('pm-pins').value   = p.pins||'';
+      document.getElementById('pm-name').value=p.name;
+      document.getElementById('pm-cat').value=p.cat;
+      document.getElementById('pm-icon').value=p.icon;
+      document.getElementById('pm-unit').value=p.unit;
+      document.getElementById('pm-price').value=p.price;
+      document.getElementById('pm-mrp').value=p.mrp;
+      document.getElementById('pm-stock').value=p.stock;
+      document.getElementById('pm-time').value=p.time||'';
+      document.getElementById('pm-desc').value=p.desc||'';
+      document.getElementById('pm-demand').value=p.demand||5;
+      document.getElementById('pm-pins').value=p.pins||'';
       updateDemandBar();
     }
   } else {
     fields.forEach(fid=>{ document.getElementById(fid).value=''; });
-    document.getElementById('pm-demand').value = 5;
-    updateDemandBar();
+    document.getElementById('pm-demand').value=5; updateDemandBar();
   }
   document.getElementById('prod-modal').classList.add('open');
 }
 function closeModal(){ document.getElementById('prod-modal').classList.remove('open'); }
 
 async function saveProduct(){
-  const p = {
-    name:   document.getElementById('pm-name').value.trim(),
-    cat:    document.getElementById('pm-cat').value,
-    icon:   document.getElementById('pm-icon').value||'📦',
-    unit:   document.getElementById('pm-unit').value,
-    price:  parseFloat(document.getElementById('pm-price').value)||0,
-    mrp:    parseFloat(document.getElementById('pm-mrp').value)||0,
-    stock:  parseInt(document.getElementById('pm-stock').value)||0,
-    time:   document.getElementById('pm-time').value||'20 mins',
-    desc:   document.getElementById('pm-desc').value,
-    demand: parseInt(document.getElementById('pm-demand').value)||5,
-    pins:   document.getElementById('pm-pins').value,
+  const p={
+    name:document.getElementById('pm-name').value.trim(),
+    cat:document.getElementById('pm-cat').value,
+    icon:document.getElementById('pm-icon').value||'📦',
+    unit:document.getElementById('pm-unit').value,
+    price:parseFloat(document.getElementById('pm-price').value)||0,
+    mrp:parseFloat(document.getElementById('pm-mrp').value)||0,
+    stock:parseInt(document.getElementById('pm-stock').value)||0,
+    time:document.getElementById('pm-time').value||'20 mins',
+    desc:document.getElementById('pm-desc').value,
+    demand:parseInt(document.getElementById('pm-demand').value)||5,
+    pins:document.getElementById('pm-pins').value,
   };
   if(!p.name||!p.price){ showToast('Name and Price are mandatory!'); return; }
-
-  const pid = editProdId || ('p'+Date.now());
-  p.id = pid;
-
-  try {
-    await db.collection('products').doc(pid).set(p, {merge: true});
-    if(editProdId){
-      const idx = products.findIndex(x=>x.id===editProdId);
-      if(idx>-1) products[idx] = {...products[idx], ...p};
-    } else {
-      products.push(p);
-    }
-    closeModal();
-    renderAdminProds(document.getElementById('admin-content'));
-    showToast(editProdId?'Product updated ✓':'Product added ✓');
-  } catch(e){ showToast('Save failed: '+e.message); }
+  const pid=editProdId||('p'+Date.now());
+  p.id=pid;
+  if(USE_FIREBASE&&db){
+    try{ await db.collection('products').doc(pid).set(p,{merge:true}); }catch(e){ showToast('Save failed: '+e.message); return; }
+  }
+  if(editProdId){ const idx=products.findIndex(x=>x.id===editProdId); if(idx>-1) products[idx]={...products[idx],...p}; }
+  else { products.push(p); }
+  if(!USE_FIREBASE) LS.save('products',products);
+  closeModal(); renderAdminProds(document.getElementById('admin-content'));
+  showToast(editProdId?'Product updated ✓':'Product added ✓');
 }
 
 async function delProd(id){
-  if(!confirm('Delete this product? This cannot be undone.')) return;
-  try {
-    await db.collection('products').doc(id).delete();
-    products = products.filter(x=>x.id!==id);
-    renderAdminProds(document.getElementById('admin-content'));
-    showToast('Product deleted');
-  } catch(e){ showToast('Delete failed: '+e.message); }
+  if(!confirm('Delete this product?')) return;
+  if(USE_FIREBASE&&db){ try{ await db.collection('products').doc(id).delete(); }catch(e){ showToast('Delete failed: '+e.message); return; } }
+  products=products.filter(x=>x.id!==id);
+  if(!USE_FIREBASE) LS.save('products',products);
+  renderAdminProds(document.getElementById('admin-content'));
+  showToast('Product deleted');
 }
 
-// ══════════════════════════════════════════════
-//  DELIVERY DASHBOARD
-// ══════════════════════════════════════════════
+// ── DELIVERY DASHBOARD ──
 function renderDelivery(){
-  // Filter orders for the logged-in agent only
-  const mine = orders.filter(o => o.agent === currentAgentName);
-  const pend = mine.filter(o=>['pending','confirmed','picked'].includes(o.status));
-  const done = mine.filter(o=>o.status==='delivered');
-  document.getElementById('del-pend').textContent = pend.length;
-  document.getElementById('del-done').textContent = done.length;
-  document.getElementById('del-earn').textContent = fmt(done.length * 35);
-
-  const el = document.getElementById('del-orders');
+  const mine=orders.filter(o=>o.agent===currentAgentName);
+  const pend=mine.filter(o=>['pending','confirmed','picked'].includes(o.status));
+  const done=mine.filter(o=>o.status==='delivered');
+  document.getElementById('del-pend').textContent=pend.length;
+  document.getElementById('del-done').textContent=done.length;
+  document.getElementById('del-earn').textContent=fmt(done.length*35);
+  const el=document.getElementById('del-orders');
   if(!mine.length){
-    el.innerHTML = `<div class="empty-state"><div class="icon">🛵</div><p>No orders assigned to you yet</p><p style="font-size:12px;margin-top:6px;color:var(--text3)">Ask admin to assign orders to ${currentAgentName}</p></div>`;
+    el.innerHTML=`<div class="empty-state"><div class="icon">🛵</div><p>No orders assigned to you yet</p><p style="font-size:12px;margin-top:6px;color:var(--text3)">Ask admin to assign orders to ${currentAgentName}</p></div>`;
     return;
   }
-  el.innerHTML = mine.map(o=>`<div class="oac">
+  el.innerHTML=mine.map(o=>`<div class="oac">
     <div class="oac-top">
       <span class="oac-id">${o.id}</span>
       <span class="badge status-${o.status}">${o.status}</span>
@@ -1632,22 +1606,17 @@ function renderDelivery(){
   </div>`).join('');
 }
 
-async function updDelStatus(id, s){
-  const o = orders.find(x=>x.id===id);
-  if(o){
-    o.status = s;
-    try {
-      await db.collection('orders').doc(id).update({status: s});
-      renderDelivery();
-      showToast(`Order ${id} → ${s} ✓`);
-    } catch(e){ showToast('Update failed: '+e.message); }
-  }
+async function updDelStatus(id,s){
+  const o=orders.find(x=>x.id===id); if(!o) return;
+  o.status=s;
+  if(USE_FIREBASE&&db){ try{ await db.collection('orders').doc(id).update({status:s}); }catch(e){} }
+  else { LS.save('orders',orders); }
+  renderDelivery(); showToast(`Order ${id} → ${s} ✓`);
 }
 
-// ══════════════════════════════════════════════
-//  BOOT
-// ══════════════════════════════════════════════
+// ── BOOT ──
 window.addEventListener('load', initApp);
 </script>
 </body>
 </html>
+c
